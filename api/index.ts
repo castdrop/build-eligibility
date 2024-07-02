@@ -86,20 +86,17 @@ app.get("/verify", async (req, res) => {
   const START_BLOCK = 15568849n; // BUILD airdrop contract deployed at this block
   const END_BLOCK = await publicClient.getBlockNumber();
 
-  const [donatedLogs, hasBuild] = await Promise.allSettled([
-    publicClient.getContractEvents({
-      abi: ABI,
-      args: { donator },
-      eventName: "Donated",
+  const [hasDonated, hasBuild] = await Promise.allSettled([
+    getHasDonated({
+      addresses: [donator, ...verifiedAddresses],
       fromBlock: START_BLOCK,
       toBlock: END_BLOCK,
-      address: BUILD_AIRDROP_CONTRACT,
     }),
     getHasBuild([donator, ...verifiedAddresses]),
   ]);
 
-  if (donatedLogs.status === "fulfilled" && hasBuild.status === "fulfilled") {
-    if (donatedLogs.value.length === 0) {
+  if (hasDonated.status === "fulfilled" && hasBuild.status === "fulfilled") {
+    if (!hasDonated.value) {
       console.log(`❌ ${donator} did not donate.`);
       return res.send({ eligible: false });
     }
@@ -115,6 +112,40 @@ app.get("/verify", async (req, res) => {
 });
 
 app.listen(1337, () => console.log("Server ready on port 1337."));
+
+async function getHasDonated({
+  addresses,
+  fromBlock,
+  toBlock,
+}: {
+  addresses: Address[];
+  fromBlock: bigint;
+  toBlock: bigint;
+}) {
+  try {
+    const donations = await Promise.allSettled(
+      addresses.map((address) =>
+        publicClient.getContractEvents({
+          abi: ABI,
+          args: { donator: address },
+          eventName: "Donated",
+          fromBlock,
+          toBlock,
+          address: BUILD_AIRDROP_CONTRACT,
+        })
+      )
+    );
+    for (const result of donations) {
+      if (result.status === "fulfilled" && result.value.length > 0) {
+        return true;
+      }
+    }
+    return false;
+  } catch (error) {
+    console.error(error);
+    return false;
+  }
+}
 
 async function getHasBuild(addresses: Address[]) {
   try {
