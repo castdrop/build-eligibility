@@ -81,34 +81,34 @@ app.get("/verify", async (req, res) => {
 
   if (!isAddress(donator)) {
     res.status(400).send("Bad Request: Invalid address");
+    return;
   }
 
   const START_BLOCK = 15568849n; // BUILD airdrop contract deployed at this block
   const END_BLOCK = await publicClient.getBlockNumber();
 
-  const [hasDonated, hasBuild] = await Promise.allSettled([
-    getHasDonated({
-      addresses: [donator, ...verifiedAddresses],
-      fromBlock: START_BLOCK,
-      toBlock: END_BLOCK,
-    }),
-    getHasBuild([donator, ...verifiedAddresses]),
-  ]);
+  const addresses = [donator, ...verifiedAddresses];
 
-  if (hasDonated.status === "fulfilled" && hasBuild.status === "fulfilled") {
-    if (!hasDonated.value) {
-      console.log(`❌ ${donator} did not donate.`);
-      return res.send({ eligible: false });
-    }
+  const hasDonated = await getHasDonated({
+    addresses,
+    fromBlock: START_BLOCK,
+    toBlock: END_BLOCK,
+  });
 
-    if (!hasBuild.value) {
-      console.log(`❌ ${donator} & its verified addresses do not hold $BUILD.`);
-      return res.send({ eligible: false });
-    }
+  const hasBuild = await getHasBuild(addresses);
 
-    console.log(`✅ ${donator} donated & holds $BUILD!`);
-    res.send({ eligible: true });
+  if (hasDonated) {
+    console.log(`✅ ${donator} donated!`);
+    return res.send({ eligible: true });
   }
+
+  if (hasBuild) {
+    console.log(`✅ ${donator} 10M $BUILD!`);
+    return res.send({ eligible: true });
+  }
+
+  console.log(`❌ ${donator} is not eligible!`);
+  res.send({ eligible: false });
 });
 
 app.listen(1337, () => console.log("Server ready on port 1337."));
@@ -147,13 +147,15 @@ async function getHasDonated({
   }
 }
 
+const MINIMUM_BUILD = 10000000000000000000000000n; // 10M $BUILD
+
 async function getHasBuild(addresses: Address[]) {
   try {
     const balances = await Promise.allSettled(
       addresses.map((address) => contract.read.balanceOf([address]))
     );
     for (const result of balances) {
-      if (result.status === "fulfilled" && result.value > 0n) {
+      if (result.status === "fulfilled" && result.value >= MINIMUM_BUILD) {
         return true;
       }
     }
