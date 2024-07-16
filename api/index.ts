@@ -147,7 +147,7 @@ async function getHasDonated({
   }
 }
 
-const MINIMUM_BUILD = 10000000000000000000000000n; // 10M $BUILD
+const MINIMUM_BUILD = 10000000000000000000000000n; // 10M $BUILD.
 
 async function getHasBuild(addresses: Address[]) {
   try {
